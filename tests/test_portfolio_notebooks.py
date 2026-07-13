@@ -195,3 +195,40 @@ def test_public_defaults_require_exact_keyword_argument_names():
     violations = MODULE.validate_notebook(notebook)
     assert "public-share-enabled" not in violations
     assert "debug-enabled" not in violations
+
+
+def test_required_headings_ignore_four_space_indented_code():
+    notebook = notebook_with("print('coursework evidence')\n")
+    notebook["cells"].insert(
+        0,
+        {
+            "cell_type": "markdown",
+            "metadata": {},
+            "source": [
+                "# Problem\n",
+                "    # Method\n",
+                "    # Results\n",
+                "    # Limitations\n",
+            ],
+        },
+    )
+
+    assert MODULE.validate_notebook(notebook) == [
+        "missing-method-section",
+        "missing-results-section",
+        "missing-limitations-section",
+    ]
+
+
+def test_public_defaults_apply_only_to_launch_call_arguments():
+    notebook = add_required_sections(
+        notebook_with(
+            "def configure(share=True, debug=True):\n"
+            "    return share, debug\n"
+            "options = dict(share=True, debug=True)\n"
+        )
+    )
+
+    violations = MODULE.validate_notebook(notebook)
+    assert "public-share-enabled" not in violations
+    assert "debug-enabled" not in violations

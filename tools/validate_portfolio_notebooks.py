@@ -39,16 +39,38 @@ def contains_token_sequence(
     )
 
 
-def has_true_keyword_argument(
+def launch_has_true_keyword_argument(
     tokens: tuple[str, ...], argument_name: str
 ) -> bool:
     target = (argument_name, "=", "true")
-    return any(
-        tokens[index : index + len(target)] == target
-        and index > 0
-        and tokens[index - 1] in {"(", ","}
-        for index in range(len(tokens) - len(target) + 1)
-    )
+    for launch_index in range(len(tokens) - 1):
+        if tokens[launch_index : launch_index + 2] != ("launch", "("):
+            continue
+        if launch_index > 0 and tokens[launch_index - 1] in {"class", "def"}:
+            continue
+
+        open_parenthesis = launch_index + 1
+        nested_depth = 0
+        for index in range(open_parenthesis + 1, len(tokens)):
+            token = tokens[index]
+            if token in {"(", "[", "{"}:
+                nested_depth += 1
+                continue
+            if token in {")", "]", "}"}:
+                if nested_depth == 0:
+                    break
+                nested_depth -= 1
+                continue
+            if (
+                nested_depth == 0
+                and tokens[index : index + len(target)] == target
+                and (
+                    index == open_parenthesis + 1
+                    or tokens[index - 1] == ","
+                )
+            ):
+                return True
+    return False
 
 
 def markdown_headings(notebook: dict) -> set[str]:
@@ -75,7 +97,7 @@ def markdown_headings(notebook: dict) -> set[str]:
                 fence_character = marker[0]
                 fence_width = len(marker)
                 continue
-            match = re.match(r"^\s*#{1,6}\s+(.+?)\s*$", line)
+            match = re.match(r"^ {0,3}#{1,6}[ \t]+(.+?)\s*$", line)
             if match:
                 title = re.sub(r"\s+#+\s*$", "", match.group(1))
                 headings.add(compact_text(title))
@@ -89,9 +111,9 @@ def validate_notebook(notebook: dict) -> list[str]:
     violations = []
     if "validation_data=(x_test,y_test)" in code:
         violations.append("test-data-used-for-validation")
-    if has_true_keyword_argument(tokens, "share"):
+    if launch_has_true_keyword_argument(tokens, "share"):
         violations.append("public-share-enabled")
-    if has_true_keyword_argument(tokens, "debug"):
+    if launch_has_true_keyword_argument(tokens, "debug"):
         violations.append("debug-enabled")
     if "[ignoringloopdetection]" in code:
         violations.append("prompt-artifact")
