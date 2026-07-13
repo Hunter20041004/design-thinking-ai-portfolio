@@ -1,7 +1,9 @@
 import importlib.util
+import json
 from pathlib import Path
 
 
+ROOT = Path(__file__).parents[1]
 SCRIPT = Path(__file__).parents[1] / "tools" / "validate_portfolio_notebooks.py"
 SPEC = importlib.util.spec_from_file_location("validate_portfolio_notebooks", SCRIPT)
 MODULE = importlib.util.module_from_spec(SPEC)
@@ -33,6 +35,12 @@ def add_required_sections(notebook: dict) -> dict:
         },
     )
     return notebook
+
+
+def load_notebook(name: str) -> dict:
+    return json.loads(
+        (ROOT / "notebooks" / name).read_text(encoding="utf-8")
+    )
 
 
 def test_validator_rejects_test_data_used_as_validation():
@@ -232,3 +240,46 @@ def test_public_defaults_apply_only_to_launch_call_arguments():
     violations = MODULE.validate_notebook(notebook)
     assert "public-share-enabled" not in violations
     assert "debug-enabled" not in violations
+
+
+def test_dnn_notebook_meets_portfolio_contract():
+    notebook = load_notebook("02-mnist-neural-network-gradio.ipynb")
+
+    assert MODULE.validate_notebook(notebook) == []
+
+    code = MODULE.code_text(notebook)
+    compact_code = MODULE.compact_text(code)
+    assert "validation_split=0.1" in compact_code or "x_val" in code
+    assert code.count("tf.keras.utils.set_random_seed(2026)") == 1
+    assert code.count("model.evaluate(") == 1
+    assert code.count("model.evaluate(x_test, y_test") == 1
+    assert code.index("model.fit(") < code.index(
+        "model.evaluate(x_test, y_test"
+    )
+    notebook_text = "\n".join(
+        "".join(cell.get("source", []))
+        for cell in notebook.get("cells", [])
+    )
+    assert "終極" not in notebook_text
+    assert "徹底消除" not in notebook_text
+    assert "完美地貼到" not in notebook_text
+    assert "現在就算特別把字畫在角落" not in notebook_text
+
+    private_metadata = {"colab", "executionInfo", "outputId"}
+    assert "colab" not in notebook.get("metadata", {})
+    for cell in notebook.get("cells", []):
+        assert private_metadata.isdisjoint(cell.get("metadata", {}))
+        if cell.get("cell_type") == "code":
+            assert cell.get("execution_count") is None
+            assert cell.get("outputs") == []
+
+    rewrite_script = ROOT / "tools" / "rewrite_portfolio_notebooks.py"
+    rewrite_spec = importlib.util.spec_from_file_location(
+        "rewrite_portfolio_notebooks", rewrite_script
+    )
+    rewrite_module = importlib.util.module_from_spec(rewrite_spec)
+    rewrite_spec.loader.exec_module(rewrite_module)
+
+    assert rewrite_module.rewrite_dnn(notebook) == notebook
+    unrelated = notebook_with("print('not the DNN notebook')\n")
+    assert rewrite_module.rewrite_dnn(unrelated) == unrelated
