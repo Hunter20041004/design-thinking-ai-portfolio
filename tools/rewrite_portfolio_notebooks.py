@@ -10,6 +10,7 @@ from pathlib import Path
 ROOT = Path(__file__).parents[1]
 DNN_PATH = ROOT / "notebooks" / "02-mnist-neural-network-gradio.ipynb"
 CNN_PATH = ROOT / "notebooks" / "06-cnn-handwritten-digit-classifier.ipynb"
+MATH_PATH = ROOT / "notebooks" / "01-function-math-visualization.ipynb"
 PRIVATE_METADATA_KEYS = ("colab", "executionInfo", "outputId")
 
 PROBLEM = """# Problem
@@ -84,6 +85,31 @@ CNN_DEMO_STAGE = """## Prediction demo
 使用已完成訓練的模型預測 test split，並顯示固定索引的影像作為流程示例。
 """
 
+MATH_PROBLEM = """# Problem
+
+以 NumPy 產生函數與參數曲線的座標，再用 Matplotlib 將正弦函數與心形方程式視覺化。
+"""
+
+MATH_METHOD = """# Method
+
+- 使用 `np.linspace` 建立連續取樣點。
+- 計算正弦函數與心形參數方程式的座標。
+- 以 Matplotlib 繪製座標軸、曲線、填色與手工字樣。
+- 本 Notebook 沒有模型訓練流程，因此不需要隨機種子。
+"""
+
+MATH_RESULTS = """# Results
+
+執行 Notebook 會產生正弦函數圖與心形參數曲線。公開版本不保存渲染輸出；圖形需在實際 Notebook 環境中重新產生。
+"""
+
+MATH_LIMITATIONS = """# Limitations
+
+- 圖形外觀會受 Matplotlib 版本、字型與顯示後端影響。
+- 曲線是固定範圍內的離散取樣，不代表符號運算證明。
+- 心形中的字樣使用手工座標，僅示範基本繪圖組合。
+"""
+
 
 def cell_text(cell: dict) -> str:
     return "".join(cell.get("source", []))
@@ -130,6 +156,18 @@ def is_cnn_notebook(notebook: dict) -> bool:
         if cell.get("cell_type") == "code"
     )
     return "model.add(Conv2D(32" in code and "def my_predict(n):" in code
+
+
+def is_math_visualization_notebook(notebook: dict) -> bool:
+    code = "\n".join(
+        cell_text(cell)
+        for cell in notebook.get("cells", [])
+        if cell.get("cell_type") == "code"
+    )
+    return (
+        "y = np.sin(x)" in code
+        and "Mathematical Heart: I LOVE YOU" in code
+    )
 
 
 def rewrite_dnn(notebook: dict) -> dict:
@@ -357,6 +395,48 @@ def rewrite_cnn(notebook: dict) -> dict:
     return rewritten
 
 
+def rewrite_math_visualization(notebook: dict) -> dict:
+    """Return the structured math notebook without changing its code."""
+
+    if not is_math_visualization_notebook(notebook):
+        return copy.deepcopy(notebook)
+
+    rewritten = copy.deepcopy(notebook)
+    rewritten.setdefault("metadata", {}).pop("colab", None)
+    cells = rewritten.get("cells", [])
+    for cell in cells:
+        metadata = cell.setdefault("metadata", {})
+        for key in PRIVATE_METADATA_KEYS:
+            metadata.pop(key, None)
+        if cell.get("cell_type") == "code":
+            cell["execution_count"] = None
+            cell["outputs"] = []
+
+    headings = {
+        line.strip().casefold()
+        for cell in cells
+        if cell.get("cell_type") == "markdown"
+        for line in cell_text(cell).splitlines()
+        if line.lstrip().startswith("#")
+    }
+    if "# problem" not in headings:
+        if cells and cells[0].get("cell_type") == "markdown" and not cell_text(
+            cells[0]
+        ).strip():
+            cells[0]["source"] = source_lines(MATH_PROBLEM)
+        else:
+            cells.insert(0, markdown_cell(MATH_PROBLEM))
+    if "# method" not in headings:
+        cells.insert(1, markdown_cell(MATH_METHOD))
+    if "# results" not in headings:
+        cells.append(markdown_cell(MATH_RESULTS))
+    if "# limitations" not in headings:
+        cells.append(markdown_cell(MATH_LIMITATIONS))
+
+    rewritten["cells"] = cells
+    return rewritten
+
+
 def rewrite_file(path: Path, rewrite) -> None:
     notebook = json.loads(path.read_text(encoding="utf-8"))
     rewritten = rewrite(notebook)
@@ -367,5 +447,6 @@ def rewrite_file(path: Path, rewrite) -> None:
 
 
 if __name__ == "__main__":
+    rewrite_file(MATH_PATH, rewrite_math_visualization)
     rewrite_file(DNN_PATH, rewrite_dnn)
     rewrite_file(CNN_PATH, rewrite_cnn)

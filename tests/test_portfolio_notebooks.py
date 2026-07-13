@@ -423,3 +423,43 @@ def test_cnn_notebook_meets_portfolio_contract():
     assert rewrite_module.rewrite_cnn(notebook) == notebook
     unrelated = notebook_with("print('not the CNN notebook')\n")
     assert rewrite_module.rewrite_cnn(unrelated) == unrelated
+
+
+def test_math_visualization_notebook_meets_portfolio_contract():
+    notebook = load_notebook("01-function-math-visualization.ipynb")
+
+    assert MODULE.validate_notebook(notebook) == []
+    headings = MODULE.markdown_headings(notebook)
+    assert {"problem", "method", "results", "limitations"} <= headings
+
+    code = MODULE.code_text(notebook)
+    assert "model.fit(" not in code
+    assert "set_random_seed(" not in code
+    preserved_code = (
+        "x = np.linspace(-10, 10, 400)",
+        "y = np.sin(x)",
+        "x = 16 * np.sin(t)**3",
+        "def plot_letter(ax, ay, color='red'):",
+        "plt.title('Mathematical Heart: I LOVE YOU'",
+    )
+    for statement in preserved_code:
+        assert code.count(statement) == 1
+
+    private_metadata = {"colab", "executionInfo", "outputId"}
+    for cell in notebook.get("cells", []):
+        assert private_metadata.isdisjoint(cell.get("metadata", {}))
+        if cell.get("cell_type") == "code":
+            assert cell.get("execution_count") is None
+            assert cell.get("outputs") == []
+
+    rewrite_script = ROOT / "tools" / "rewrite_portfolio_notebooks.py"
+    rewrite_spec = importlib.util.spec_from_file_location(
+        "rewrite_portfolio_notebooks", rewrite_script
+    )
+    rewrite_module = importlib.util.module_from_spec(rewrite_spec)
+    rewrite_spec.loader.exec_module(rewrite_module)
+
+    assert rewrite_module.is_math_visualization_notebook(notebook) is True
+    assert rewrite_module.rewrite_math_visualization(notebook) == notebook
+    unrelated = notebook_with("print('not the math notebook')\n")
+    assert rewrite_module.rewrite_math_visualization(unrelated) == unrelated
