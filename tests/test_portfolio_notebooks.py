@@ -637,3 +637,12 @@ def test_reflection_agent_notebook_meets_portfolio_contract():
     assert rewrite_module.rewrite_reflection(notebook) == notebook
     unrelated = notebook_with("print('not the reflection notebook')\n")
     assert rewrite_module.rewrite_reflection(unrelated) == unrelated
+
+
+def test_all_notebooks_meet_portfolio_contract():
+    notebook_paths = sorted((ROOT / "notebooks").glob("*.ipynb"))
+
+    assert notebook_paths
+    for path in notebook_paths:
+        notebook = json.loads(path.read_text(encoding="utf-8"))
+        assert MODULE.validate_notebook(notebook) == [], path.name
