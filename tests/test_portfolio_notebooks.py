@@ -580,3 +580,60 @@ def test_debate_arena_notebook_meets_portfolio_contract():
     assert rewrite_module.rewrite_debate(notebook) == notebook
     unrelated = notebook_with("print('not the debate notebook')\n")
     assert rewrite_module.rewrite_debate(unrelated) == unrelated
+
+
+def test_reflection_agent_notebook_meets_portfolio_contract():
+    notebook = load_notebook("05-reflection-ai-agent.ipynb")
+
+    assert MODULE.validate_notebook(notebook) == []
+    headings = MODULE.markdown_headings(notebook)
+    assert {"problem", "method", "results", "limitations"} <= headings
+
+    code = MODULE.code_text(notebook)
+    compact_code = MODULE.compact_text(code)
+    assert "demo.launch(share=false,debug=false)" in compact_code
+    assert "os.environ.get('groq_api_key')" in code.casefold()
+    assert "from google.colab import userdata" in code
+    assert "userdata.get('GROQ_API_KEY')" in code
+    preserved_code = (
+        "def reply(system=",
+        "response = client.chat.completions.create(",
+        "def trailer_reflect(prompt):",
+        "first_version = reply(system_writer,",
+        "suggestion = reply(system_reviewer, first_version,",
+        "second_version = reply(system_writer, second_prompt,",
+        "btn.click(trailer_reflect, inputs=[user_input], outputs=[out1, out2, out3])",
+    )
+    for statement in preserved_code:
+        assert code.count(statement) == 1
+
+    notebook_text = "\n".join(
+        "".join(cell.get("source", []))
+        for cell in notebook.get("cells", [])
+    )
+    assert "SYNTHETIC EXAMPLE" in notebook_text
+    assert "沒有呼叫任何 API" in notebook_text
+    assert "只驗證 orchestration 的資料流與呈現格式" in notebook_text
+    assert "live provider output 只會在使用者主動操作介面後產生" in notebook_text
+    assert "模型可能被供應商更名、淘汰或下架" in notebook_text
+    for claim in ("頂級", "史詩級", "一定要有一個吊人胃口"):
+        assert claim not in notebook_text
+
+    private_metadata = {"colab", "executionInfo", "outputId"}
+    for cell in notebook.get("cells", []):
+        assert private_metadata.isdisjoint(cell.get("metadata", {}))
+        if cell.get("cell_type") == "code":
+            assert cell.get("execution_count") is None
+            assert cell.get("outputs") == []
+
+    rewrite_script = ROOT / "tools" / "rewrite_portfolio_notebooks.py"
+    rewrite_spec = importlib.util.spec_from_file_location(
+        "rewrite_portfolio_notebooks", rewrite_script
+    )
+    rewrite_module = importlib.util.module_from_spec(rewrite_spec)
+    rewrite_spec.loader.exec_module(rewrite_module)
+
+    assert rewrite_module.is_reflection_notebook(notebook) is True
+    assert rewrite_module.rewrite_reflection(notebook) == notebook
+    unrelated = notebook_with("print('not the reflection notebook')\n")
+    assert rewrite_module.rewrite_reflection(unrelated) == unrelated

@@ -13,6 +13,7 @@ CNN_PATH = ROOT / "notebooks" / "06-cnn-handwritten-digit-classifier.ipynb"
 MATH_PATH = ROOT / "notebooks" / "01-function-math-visualization.ipynb"
 BTS_PATH = ROOT / "notebooks" / "03-bts-transfer-learning-classifier.ipynb"
 DEBATE_PATH = ROOT / "notebooks" / "04-multi-llm-debate-arena.ipynb"
+REFLECTION_PATH = ROOT / "notebooks" / "05-reflection-ai-agent.ipynb"
 PRIVATE_METADATA_KEYS = ("colab", "executionInfo", "outputId")
 
 PROBLEM = """# Problem
@@ -173,6 +174,44 @@ synthetic_example = """SYNTHETIC EXAMPLE
 print(synthetic_example)
 '''
 
+REFLECTION_PROBLEM = """# Problem
+
+## 電影預告片旁白 Reflection Agent
+
+這個課堂練習把 Writer、Reviewer、Writer 改寫串成三階段流程，觀察結構化回饋如何影響第二版文字。實際文字由 Groq 模型產生，需要使用者自行提供 API key；輸出品質與可用模型會隨供應商改變。
+"""
+
+REFLECTION_METHOD = """# Method
+
+- `trailer_reflect` 依序產生初稿、四面向回饋與修訂稿，保留原本的 Reflection orchestration。
+- API key 只從 `GROQ_API_KEY` 環境變數或 Colab Secrets 取得，不寫入 Notebook。
+- 公開範例使用作者手寫的 synthetic tuple，只驗證 orchestration 的資料流與呈現格式，沒有呼叫任何 API。
+- live provider output 只會在使用者主動操作介面後產生，可能出現錯誤、不一致或不適當內容。
+"""
+
+REFLECTION_RESULTS = """# Results
+
+下方內容是 **SYNTHETIC EXAMPLE**，由作者手寫來示範初稿、Reviewer 回饋與修訂稿的三段輸出格式，沒有呼叫任何 API，也不代表指定模型的真實回答。公開版本不保存 live provider output。
+"""
+
+REFLECTION_LIMITATIONS = """# Limitations
+
+- 模型可能被供應商更名、淘汰或下架；執行前必須查核 Groq 當下可用的 model ID。
+- Reviewer 分數是模型產生的文字，不是客觀品質評量，也不能取代人類編輯。
+- 使用 live API 可能產生費用、速率限制或資料處理風險；請勿輸入機密或個人資料。
+- Synthetic example 只驗證 orchestration 的資料流與呈現格式，不證明 AISuite 或 Groq 連線成功。
+"""
+
+REFLECTION_SYNTHETIC_CODE = '''# SYNTHETIC EXAMPLE — 作者手寫，沒有呼叫任何 API
+synthetic_reflection = (
+    "初稿：他只是忘了帶傘……卻走進一場突如其來的雨。",
+    "Reviewer：轉折可以更聚焦；請讓最後一句回扣那把傘。",
+    "修訂稿：他以為少的是一把傘……直到雨停後，門口出現另一把。",
+)
+for stage in synthetic_reflection:
+    print(stage)
+'''
+
 
 def cell_text(cell: dict) -> str:
     return "".join(cell.get("source", []))
@@ -252,6 +291,19 @@ def is_debate_notebook(notebook: dict) -> bool:
         if cell.get("cell_type") == "code"
     )
     return "def run_debate(topic, rounds=2):" in code and "model_judge" in code
+
+
+def is_reflection_notebook(notebook: dict) -> bool:
+    code = "\n".join(
+        cell_text(cell)
+        for cell in notebook.get("cells", [])
+        if cell.get("cell_type") == "code"
+    )
+    return (
+        "def trailer_reflect(prompt):" in code
+        and "system_reviewer" in code
+        and "btn.click(trailer_reflect" in code
+    )
 
 
 def rewrite_dnn(notebook: dict) -> dict:
@@ -698,6 +750,83 @@ def rewrite_debate(notebook: dict) -> dict:
     return rewritten
 
 
+def rewrite_reflection(notebook: dict) -> dict:
+    """Return the safe Reflection workflow with an offline example."""
+
+    if not is_reflection_notebook(notebook):
+        return copy.deepcopy(notebook)
+
+    rewritten = copy.deepcopy(notebook)
+    rewritten.setdefault("metadata", {}).pop("colab", None)
+    cells = rewritten.get("cells", [])
+    headings = {
+        line.strip().casefold()
+        for cell in cells
+        if cell.get("cell_type") == "markdown"
+        for line in cell_text(cell).splitlines()
+        if line.lstrip().startswith("#")
+    }
+
+    for index, cell in enumerate(cells):
+        metadata = cell.setdefault("metadata", {})
+        for key in PRIVATE_METADATA_KEYS:
+            metadata.pop(key, None)
+        text = cell_text(cell)
+        if cell.get("cell_type") != "code":
+            if index == 0 and "# problem" not in headings:
+                cell["source"] = source_lines(REFLECTION_PROBLEM)
+            continue
+
+        cell["execution_count"] = None
+        cell["outputs"] = []
+        if text.strip() == "import os\nfrom google.colab import userdata":
+            text = "import os\n"
+        if "api_key = userdata.get('Groq')" in text:
+            text = (
+                "# 優先讀取環境變數；在 Colab 中可改用 Secrets。\n"
+                "groq_api_key = os.environ.get('GROQ_API_KEY')\n"
+                "if not groq_api_key:\n"
+                "    try:\n"
+                "        from google.colab import userdata\n"
+                "        groq_api_key = userdata.get('GROQ_API_KEY')\n"
+                "    except Exception:\n"
+                "        groq_api_key = None\n"
+                "if not groq_api_key:\n"
+                "    raise ValueError('Set GROQ_API_KEY in the environment or Colab Secrets')\n"
+                "os.environ['GROQ_API_KEY'] = groq_api_key\n"
+                "provider = \"groq\"\n"
+                "model = \"openai/gpt-oss-120b\"\n"
+            )
+        replacements = (
+            ("好萊塢頂級電影預告片旁白創作大師", "電影預告片旁白創作者"),
+            ("資深好萊塢電影預告片導演，看過上萬部預告片", "電影預告片文字 Reviewer"),
+            ("結尾一定要有一個吊人胃口的反轉句", "結尾加入一個能延續懸念的轉折句"),
+            ("史詩級電影預告片旁白", "戲劇化的電影預告片旁白"),
+            ("第二版終極預告片", "第二版修訂稿"),
+            ("demo.launch(share=True, debug=True)", "demo.launch(share=False, debug=False)"),
+        )
+        for old, new in replacements:
+            text = text.replace(old, new, 1)
+        cell["source"] = source_lines(text)
+
+    if "# method" not in headings:
+        cells.insert(1, markdown_cell(REFLECTION_METHOD))
+    if "# results" not in headings:
+        ui_index = next(
+            index
+            for index, cell in enumerate(cells)
+            if cell.get("cell_type") == "markdown"
+            and cell_text(cell).strip() == "## Gradio 介面"
+        )
+        cells.insert(ui_index, markdown_cell(REFLECTION_RESULTS))
+        cells.insert(ui_index + 1, code_cell(REFLECTION_SYNTHETIC_CODE))
+    if "# limitations" not in headings:
+        cells.append(markdown_cell(REFLECTION_LIMITATIONS))
+
+    rewritten["cells"] = cells
+    return rewritten
+
+
 def rewrite_file(path: Path, rewrite) -> None:
     notebook = json.loads(path.read_text(encoding="utf-8"))
     rewritten = rewrite(notebook)
@@ -712,4 +841,5 @@ if __name__ == "__main__":
     rewrite_file(DNN_PATH, rewrite_dnn)
     rewrite_file(BTS_PATH, rewrite_bts)
     rewrite_file(DEBATE_PATH, rewrite_debate)
+    rewrite_file(REFLECTION_PATH, rewrite_reflection)
     rewrite_file(CNN_PATH, rewrite_cnn)
