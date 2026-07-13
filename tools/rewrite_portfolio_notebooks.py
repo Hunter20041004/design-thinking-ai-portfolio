@@ -11,6 +11,7 @@ ROOT = Path(__file__).parents[1]
 DNN_PATH = ROOT / "notebooks" / "02-mnist-neural-network-gradio.ipynb"
 CNN_PATH = ROOT / "notebooks" / "06-cnn-handwritten-digit-classifier.ipynb"
 MATH_PATH = ROOT / "notebooks" / "01-function-math-visualization.ipynb"
+BTS_PATH = ROOT / "notebooks" / "03-bts-transfer-learning-classifier.ipynb"
 PRIVATE_METADATA_KEYS = ("colab", "executionInfo", "outputId")
 
 PROBLEM = """# Problem
@@ -110,6 +111,29 @@ MATH_LIMITATIONS = """# Limitations
 - 心形中的字樣使用手工座標，僅示範基本繪圖組合。
 """
 
+BTS_METHOD = """# Method
+
+- 使用 ImageNet 預訓練的 ResNet50V2 作為固定特徵萃取器，再訓練 Dense 分類層。
+- 現有課堂流程先將原圖與水平翻轉圖合併，再用 `validation_split=0.2` 切分；因此沒有獨立 test split，validation 也可能包含同一來源影像的變形版本。
+- 若要做正式評估，應先切分原始照片，再只增強 training split，使用 validation split 做模型選擇，最後只評估一次未參與調整的 test split。
+- 固定 TensorFlow 隨機種子為 2026，讓分類層初始化與資料切分較容易重現。
+"""
+
+BTS_RESULTS = """# Results
+
+## Training curves
+
+執行 Notebook 時會顯示 training 與 validation 曲線。公開版本不保存輸出，也沒有獨立測試集，因此不宣稱 final test 表現；曲線僅用於觀察課堂流程是否出現明顯過擬合。
+"""
+
+BTS_LIMITATIONS = """# Limitations
+
+- 目前資料集規模小，且 augmentation 後才切 validation，不能視為獨立泛化評估。
+- 影像著作權、授權與當事人同意尚未驗證；請勿重新散布資料集，並只使用有權使用的照片。
+- 模型只在七個預設標籤間分類，不能作為身分驗證工具，也不適合用於高風險決策。
+- 雲端檔案 ID 與執行環境可能失效，使用者需自行提供合法且結構相同的資料。
+"""
+
 
 def cell_text(cell: dict) -> str:
     return "".join(cell.get("source", []))
@@ -167,6 +191,18 @@ def is_math_visualization_notebook(notebook: dict) -> bool:
     return (
         "y = np.sin(x)" in code
         and "Mathematical Heart: I LOVE YOU" in code
+    )
+
+
+def is_bts_notebook(notebook: dict) -> bool:
+    code = "\n".join(
+        cell_text(cell)
+        for cell in notebook.get("cells", [])
+        if cell.get("cell_type") == "code"
+    )
+    return (
+        'category_en = "RM,Jin,SUGA,JHope,Jimin,V,Jungkook"' in code
+        and "ResNet50V2(include_top=False" in code
     )
 
 
@@ -437,6 +473,98 @@ def rewrite_math_visualization(notebook: dict) -> dict:
     return rewritten
 
 
+def rewrite_bts(notebook: dict) -> dict:
+    """Return the documented transfer-learning notebook."""
+
+    if not is_bts_notebook(notebook):
+        return copy.deepcopy(notebook)
+
+    rewritten = copy.deepcopy(notebook)
+    rewritten.setdefault("metadata", {}).pop("colab", None)
+    cells = rewritten.get("cells", [])
+    headings = {
+        line.strip().casefold()
+        for cell in cells
+        if cell.get("cell_type") == "markdown"
+        for line in cell_text(cell).splitlines()
+        if line.lstrip().startswith("#")
+    }
+
+    for cell in cells:
+        metadata = cell.setdefault("metadata", {})
+        for key in PRIVATE_METADATA_KEYS:
+            metadata.pop(key, None)
+        text = cell_text(cell)
+        if cell.get("cell_type") == "code":
+            cell["execution_count"] = None
+            cell["outputs"] = []
+            if (
+                "import tensorflow as tf" in text
+                and "tf.keras.utils.set_random_seed(2026)" not in text
+            ):
+                text = text.replace(
+                    "import tensorflow as tf\n",
+                    "import tensorflow as tf\n"
+                    "tf.keras.utils.set_random_seed(2026)\n",
+                    1,
+                )
+            replacements = (
+                (
+                    'description = "上傳一張 BTS 成員的照片，我會告訴你他是誰！支援全部 7 位成員辨識"',
+                    'description = "上傳照片後，模型會回傳七個課堂標籤的信心分數；結果不能作為身分驗證。"',
+                ),
+                (
+                    "# 使用標準學習率，讓收斂快一點",
+                    "# 使用 Adam 優化器與明確的 learning rate",
+                ),
+                (
+                    "# share=True 會產生一個公開連結，方便分享",
+                    "# 公開版本只在本機啟動，不建立分享連結",
+                ),
+                ("demo.launch(share=True)", "demo.launch(share=False)"),
+            )
+            for old, new in replacements:
+                text = text.replace(old, new, 1)
+            cell["source"] = source_lines(text)
+            continue
+
+        if not cell_text(cell).strip() and cell is not cells[0]:
+            continue
+        if text.startswith("# 作業二：遷移式學習做 BTS 成員辨識器"):
+            text = text.replace(
+                "# 作業二：遷移式學習做 BTS 成員辨識器",
+                "# Problem\n\n## 作業二：遷移式學習做 BTS 成員辨識器",
+                1,
+            )
+        replacements = (
+            (
+                "即使每人只有 ~10 張照片，也能有不錯的辨識效果",
+                "少量照片容易造成過擬合，validation 曲線只能作為課堂練習的診斷",
+            ),
+            (
+                "因為只訓練最後的分類層（ResNet 的參數是凍結的），所以訓練非常快！",
+                "本 Notebook 只訓練最後的分類層，ResNet 特徵萃取器維持固定。",
+            ),
+            (
+                "上傳任意一張 BTS 成員照片，模型會告訴你他是誰",
+                "上傳照片後，模型會回傳七個課堂標籤的信心分數，不能作為身分驗證工具。",
+            ),
+        )
+        for old, new in replacements:
+            text = text.replace(old, new, 1)
+        if "### 8. 訓練曲線" in text and "# results" not in headings:
+            text = BTS_RESULTS
+        cell["source"] = source_lines(text)
+
+    if "# method" not in headings:
+        cells.insert(1, markdown_cell(BTS_METHOD))
+    if "# limitations" not in headings:
+        cells.append(markdown_cell(BTS_LIMITATIONS))
+
+    rewritten["cells"] = cells
+    return rewritten
+
+
 def rewrite_file(path: Path, rewrite) -> None:
     notebook = json.loads(path.read_text(encoding="utf-8"))
     rewritten = rewrite(notebook)
@@ -449,4 +577,5 @@ def rewrite_file(path: Path, rewrite) -> None:
 if __name__ == "__main__":
     rewrite_file(MATH_PATH, rewrite_math_visualization)
     rewrite_file(DNN_PATH, rewrite_dnn)
+    rewrite_file(BTS_PATH, rewrite_bts)
     rewrite_file(CNN_PATH, rewrite_cnn)

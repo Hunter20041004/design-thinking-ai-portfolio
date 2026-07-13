@@ -463,3 +463,65 @@ def test_math_visualization_notebook_meets_portfolio_contract():
     assert rewrite_module.rewrite_math_visualization(notebook) == notebook
     unrelated = notebook_with("print('not the math notebook')\n")
     assert rewrite_module.rewrite_math_visualization(unrelated) == unrelated
+
+
+def test_bts_transfer_learning_notebook_meets_portfolio_contract():
+    notebook = load_notebook("03-bts-transfer-learning-classifier.ipynb")
+
+    assert MODULE.validate_notebook(notebook) == []
+    headings = MODULE.markdown_headings(notebook)
+    assert {"problem", "method", "results", "limitations"} <= headings
+
+    code = MODULE.code_text(notebook)
+    assert code.count("tf.keras.utils.set_random_seed(2026)") == 1
+    assert "validation_split=0.2" in MODULE.compact_text(code)
+    assert "model.evaluate(" not in code
+    assert "demo.launch(share=false)" in MODULE.compact_text(code)
+    preserved_code = (
+        "ResNet50V2(include_top=False, pooling='avg', weights='imagenet')",
+        "features = resnet.predict(data_preprocessed, verbose=1)",
+        "layers.Dense(512, input_dim=features.shape[1], activation='relu')",
+        "layers.Dense(N, activation='softmax')",
+        "epochs=100",
+    )
+    for statement in preserved_code:
+        assert code.count(statement) == 1
+
+    notebook_text = "\n".join(
+        "".join(cell.get("source", []))
+        for cell in notebook.get("cells", [])
+    )
+    required_disclosures = (
+        "沒有獨立 test split",
+        "先切分原始照片，再只增強 training split",
+        "影像著作權、授權與當事人同意尚未驗證",
+        "不能作為身分驗證工具",
+        "不宣稱 final test 表現",
+    )
+    for disclosure in required_disclosures:
+        assert disclosure in notebook_text
+    for claim in (
+        "即使每人只有 ~10 張照片，也能有不錯的辨識效果",
+        "所以訓練非常快",
+        "模型會告訴你他是誰",
+    ):
+        assert claim not in notebook_text
+
+    private_metadata = {"colab", "executionInfo", "outputId"}
+    for cell in notebook.get("cells", []):
+        assert private_metadata.isdisjoint(cell.get("metadata", {}))
+        if cell.get("cell_type") == "code":
+            assert cell.get("execution_count") is None
+            assert cell.get("outputs") == []
+
+    rewrite_script = ROOT / "tools" / "rewrite_portfolio_notebooks.py"
+    rewrite_spec = importlib.util.spec_from_file_location(
+        "rewrite_portfolio_notebooks", rewrite_script
+    )
+    rewrite_module = importlib.util.module_from_spec(rewrite_spec)
+    rewrite_spec.loader.exec_module(rewrite_module)
+
+    assert rewrite_module.is_bts_notebook(notebook) is True
+    assert rewrite_module.rewrite_bts(notebook) == notebook
+    unrelated = notebook_with("print('not the transfer-learning notebook')\n")
+    assert rewrite_module.rewrite_bts(unrelated) == unrelated
