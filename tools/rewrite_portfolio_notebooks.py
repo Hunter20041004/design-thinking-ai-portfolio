@@ -9,6 +9,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).parents[1]
 DNN_PATH = ROOT / "notebooks" / "02-mnist-neural-network-gradio.ipynb"
+CNN_PATH = ROOT / "notebooks" / "06-cnn-handwritten-digit-classifier.ipynb"
 PRIVATE_METADATA_KEYS = ("colab", "executionInfo", "outputId")
 
 PROBLEM = """# Problem
@@ -38,6 +39,51 @@ LIMITATIONS = """# Limitations
 - Gradio 僅以 `share=False`、`debug=False` 在本機啟動，公開版本不建立外部分享連結。
 """
 
+CNN_PROBLEM = """# Problem
+
+使用 MNIST 建立卷積神經網路進行手寫數字分類，同時讓 validation 只取自訓練資料，保留 test split 到訓練完成後才評估。
+"""
+
+CNN_METHOD = """# Method
+
+- 影像維持 28×28 灰階格式並正規化至 0–1。
+- 模型保留原本的兩個 Conv2D、Batch Normalization、Max Pooling、Dropout 與 Dense 分類層。
+- 固定隨機種子為 2026，並以訓練資料的 10% 作為 validation split。
+- 模型訓練與選擇完成後，才使用保留的 test split 做一次最終評估。
+"""
+
+CNN_RESULTS = """# Results
+
+執行 Notebook 時會產生訓練與 validation 指標，並在訓練完成後評估保留的 test split。公開版本不保存執行輸出，因此不宣稱特定準確率；結果需在實際執行環境中重新產生。
+"""
+
+CNN_LIMITATIONS = """# Limitations
+
+- MNIST 與真實手寫輸入的分布可能不同，測試結果不能直接代表部署情境。
+- `validation_split=0.1` 取自訓練資料；test split 不參與訓練期間的模型調整。
+- 範例預測固定顯示 test split 的第 100 張影像，僅用於說明推論流程。
+"""
+
+CNN_DATA_STAGE = """## Data preparation
+
+載入 MNIST，保留原本的 reshape、正規化與 one-hot encoding 步驟。
+"""
+
+CNN_MODEL_STAGE = """## Model definition
+
+保留原始 CNN 架構與 Adam 設定，只將程式拆成較容易閱讀的責任區塊。
+"""
+
+CNN_TRAINING_STAGE = """## Training
+
+以 training-only validation split 訓練；本階段不讀取 test split 作為 validation data。
+"""
+
+CNN_DEMO_STAGE = """## Prediction demo
+
+使用已完成訓練的模型預測 test split，並顯示固定索引的影像作為流程示例。
+"""
+
 
 def cell_text(cell: dict) -> str:
     return "".join(cell.get("source", []))
@@ -55,12 +101,31 @@ def markdown_cell(text: str) -> dict:
     }
 
 
+def code_cell(text: str) -> dict:
+    return {
+        "cell_type": "code",
+        "execution_count": None,
+        "metadata": {},
+        "outputs": [],
+        "source": source_lines(text),
+    }
+
+
 def is_dnn_notebook(notebook: dict) -> bool:
     code = "\n".join(
         cell_text(cell)
         for cell in notebook.get("cells", [])
         if cell.get("cell_type") == "code"
     )
+
+
+def is_cnn_notebook(notebook: dict) -> bool:
+    code = "\n".join(
+        cell_text(cell)
+        for cell in notebook.get("cells", [])
+        if cell.get("cell_type") == "code"
+    )
+    return "model.add(Conv2D(32" in code and "def my_predict(n):" in code
     return (
         "from tensorflow.keras.datasets import mnist" in code
         and "def resize_image_dnn_advanced" in code
@@ -190,9 +255,111 @@ def rewrite_dnn(notebook: dict) -> dict:
     return rewritten
 
 
-def rewrite_file(path: Path) -> None:
+def rewrite_cnn(notebook: dict) -> dict:
+    """Return the corrected CNN notebook without mutating the input."""
+
+    if not is_cnn_notebook(notebook):
+        return copy.deepcopy(notebook)
+
+    rewritten = copy.deepcopy(notebook)
+    rewritten.setdefault("metadata", {}).pop("colab", None)
+    code = "\n".join(
+        cell_text(cell).strip()
+        for cell in rewritten.get("cells", [])
+        if cell.get("cell_type") == "code"
+    )
+    code += "\n"
+
+    replacements = (
+        ("# [ignoring loop detection]\n", ""),
+        ("# 2. 建立我的創意神經網路", "# 2. 建立 CNN 模型"),
+        (
+            "# --- 創意點 1：BatchNormalization (批次標準化) ---",
+            "# --- BatchNormalization (批次標準化) ---",
+        ),
+        (
+            "# 就像給神經網路裝上穩定器，讓每一層的數據分佈更均勻，大幅提升訓練速度。",
+            "# 協助穩定每一層的特徵分布。",
+        ),
+        (
+            "# --- 創意點 2：Dropout (隨機失活) ---",
+            "# --- Dropout (隨機失活) ---",
+        ),
+        (
+            "# 隨機讓部分神經元休息，防止模型「死背」題目，這能顯著提升對新資料的辨識準確度。",
+            "# 隨機停用部分神經元，以降低過擬合風險。",
+        ),
+        (
+            "# 全連接層 (增加神經元數量提升理解能力)",
+            "# 全連接分類層",
+        ),
+        (
+            "# 3. 組裝模型 (創意點 3：使用 Adam 優化器與分類專用損失函數)",
+            "# 3. 組裝模型 (Adam 優化器與分類損失函數)",
+        ),
+        (
+            "# 4. 開始訓練 (設定較大的 batch_size=256 以利用 GPU 進行超速訓練)",
+            "# 4. 開始訓練 (batch_size=256)",
+        ),
+        (
+            "          validation_data=(x_test, y_test))",
+            "          validation_split=0.1)",
+        ),
+        ("測試正確率達標：", "測試正確率："),
+    )
+    for old, new in replacements:
+        code = code.replace(old, new, 1)
+
+    data_anchor = "# 1. 數據準備 (MNIST 數字辨識)"
+    model_anchor = "# 2. 建立 CNN 模型"
+    training_anchor = "# 4. 開始訓練 (batch_size=256)"
+    evaluation_anchor = "# 5. 評估與預測結果"
+    demo_anchor = "# 預測介面"
+
+    if "tf.keras.utils.set_random_seed(2026)" not in code:
+        code = code.replace(
+            data_anchor,
+            "# 讓模型初始化與資料切分可重現\n"
+            "tf.keras.utils.set_random_seed(2026)\n\n"
+            + data_anchor,
+            1,
+        )
+
+    data_index = code.index(data_anchor)
+    model_index = code.index(model_anchor)
+    training_index = code.index(training_anchor)
+    evaluation_index = code.index(evaluation_anchor)
+    demo_index = code.index(demo_anchor)
+
+    imports = code[:data_index].strip() + "\n"
+    data = code[data_index:model_index].strip() + "\n"
+    model = code[model_index:training_index].strip() + "\n"
+    training = code[training_index:evaluation_index].strip() + "\n"
+    evaluation = code[evaluation_index:demo_index].strip() + "\n"
+    demo = code[demo_index:].strip() + "\n"
+
+    rewritten["cells"] = [
+        markdown_cell(CNN_PROBLEM),
+        markdown_cell(CNN_METHOD),
+        code_cell(imports),
+        markdown_cell(CNN_DATA_STAGE),
+        code_cell(data),
+        markdown_cell(CNN_MODEL_STAGE),
+        code_cell(model),
+        markdown_cell(CNN_TRAINING_STAGE),
+        code_cell(training),
+        markdown_cell(CNN_RESULTS),
+        code_cell(evaluation),
+        markdown_cell(CNN_DEMO_STAGE),
+        code_cell(demo),
+        markdown_cell(CNN_LIMITATIONS),
+    ]
+    return rewritten
+
+
+def rewrite_file(path: Path, rewrite) -> None:
     notebook = json.loads(path.read_text(encoding="utf-8"))
-    rewritten = rewrite_dnn(notebook)
+    rewritten = rewrite(notebook)
     path.write_text(
         json.dumps(rewritten, ensure_ascii=False, indent=1) + "\n",
         encoding="utf-8",
@@ -200,4 +367,5 @@ def rewrite_file(path: Path) -> None:
 
 
 if __name__ == "__main__":
-    rewrite_file(DNN_PATH)
+    rewrite_file(DNN_PATH, rewrite_dnn)
+    rewrite_file(CNN_PATH, rewrite_cnn)

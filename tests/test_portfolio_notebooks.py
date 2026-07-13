@@ -283,3 +283,77 @@ def test_dnn_notebook_meets_portfolio_contract():
     assert rewrite_module.rewrite_dnn(notebook) == notebook
     unrelated = notebook_with("print('not the DNN notebook')\n")
     assert rewrite_module.rewrite_dnn(unrelated) == unrelated
+
+
+def test_cnn_notebook_meets_portfolio_contract():
+    notebook = load_notebook("06-cnn-handwritten-digit-classifier.ipynb")
+
+    assert MODULE.validate_notebook(notebook) == []
+
+    code_cells = [
+        cell
+        for cell in notebook.get("cells", [])
+        if cell.get("cell_type") == "code"
+    ]
+    assert len(code_cells) >= 6
+    headings = MODULE.markdown_headings(notebook)
+    assert {"problem", "method", "results", "limitations"} <= headings
+
+    code = MODULE.code_text(notebook)
+    compact_code = MODULE.compact_text(code)
+    assert "validation_split=0.1" in compact_code or "x_val" in code
+    assert code.count("tf.keras.utils.set_random_seed(2026)") == 1
+    assert code.count("model.evaluate(") == 1
+    assert code.count("model.evaluate(x_test, y_test") == 1
+    assert code.index("model.fit(") < code.index(
+        "model.evaluate(x_test, y_test"
+    )
+
+    preserved_code = (
+        "x_train = x_train.reshape(60000, 28, 28, 1) / 255",
+        "x_test = x_test.reshape(10000, 28, 28, 1) / 255",
+        "model.add(Conv2D(32, (3,3), padding='same', "
+        "input_shape=(28,28,1), activation='relu'))",
+        "model.add(Conv2D(64, (3,3), padding='same', "
+        "activation='relu'))",
+        "model.add(Dropout(0.25))",
+        "model.add(Dense(128, activation='relu'))",
+        "model.add(Dropout(0.5))",
+        "model.add(Dense(10, activation='softmax'))",
+        "optimizer=Adam(learning_rate=0.001)",
+    )
+    for statement in preserved_code:
+        assert code.count(statement) == 1
+
+    notebook_text = "\n".join(
+        "".join(cell.get("source", []))
+        for cell in notebook.get("cells", [])
+    )
+    for phrase in (
+        "[ignoring loop detection]",
+        "創意神經網路",
+        "大幅提升訓練速度",
+        "顯著提升",
+        "超速訓練",
+        "測試正確率達標",
+    ):
+        assert phrase not in notebook_text
+
+    private_metadata = {"colab", "executionInfo", "outputId"}
+    assert "colab" not in notebook.get("metadata", {})
+    for cell in notebook.get("cells", []):
+        assert private_metadata.isdisjoint(cell.get("metadata", {}))
+        if cell.get("cell_type") == "code":
+            assert cell.get("execution_count") is None
+            assert cell.get("outputs") == []
+
+    rewrite_script = ROOT / "tools" / "rewrite_portfolio_notebooks.py"
+    rewrite_spec = importlib.util.spec_from_file_location(
+        "rewrite_portfolio_notebooks", rewrite_script
+    )
+    rewrite_module = importlib.util.module_from_spec(rewrite_spec)
+    rewrite_spec.loader.exec_module(rewrite_module)
+
+    assert rewrite_module.rewrite_cnn(notebook) == notebook
+    unrelated = notebook_with("print('not the CNN notebook')\n")
+    assert rewrite_module.rewrite_cnn(unrelated) == unrelated
