@@ -12,6 +12,7 @@ DNN_PATH = ROOT / "notebooks" / "02-mnist-neural-network-gradio.ipynb"
 CNN_PATH = ROOT / "notebooks" / "06-cnn-handwritten-digit-classifier.ipynb"
 MATH_PATH = ROOT / "notebooks" / "01-function-math-visualization.ipynb"
 BTS_PATH = ROOT / "notebooks" / "03-bts-transfer-learning-classifier.ipynb"
+DEBATE_PATH = ROOT / "notebooks" / "04-multi-llm-debate-arena.ipynb"
 PRIVATE_METADATA_KEYS = ("colab", "executionInfo", "outputId")
 
 PROBLEM = """# Problem
@@ -134,6 +135,44 @@ BTS_LIMITATIONS = """# Limitations
 - 雲端檔案 ID 與執行環境可能失效，使用者需自行提供合法且結構相同的資料。
 """
 
+DEBATE_PROBLEM = """# Problem
+
+## AI 辯論擂台 — 用 AISuite 組合多個 LLM 角色
+
+這個課堂練習將正方、反方與評審拆成三個提示角色，觀察多回合訊息如何在角色之間傳遞。實際文字由 Groq 模型產生，需要使用者自行提供 API key，且輸出品質與可用模型會隨供應商改變。
+"""
+
+DEBATE_METHOD = """# Method
+
+- `run_debate` 保存正反方訊息歷史，再把完整紀錄交給評審角色。
+- API key 只從 `GROQ_API_KEY` 環境變數或 Colab Secrets 取得，不寫入 Notebook。
+- 公開範例使用手寫 synthetic transcript 測試顯示格式；沒有呼叫任何 API。
+- live Groq 輸出只會在使用者主動操作介面後產生，且可能產生錯誤、不一致或不當內容。
+"""
+
+DEBATE_RESULTS = """# Results
+
+下方 transcript 是 **SYNTHETIC EXAMPLE**，由作者手寫來示範正方、反方與評審的輸出格式，沒有呼叫任何 API，也不代表指定模型的真實回答。公開版本不保存 live provider output。
+"""
+
+DEBATE_LIMITATIONS = """# Limitations
+
+- 模型可能被供應商更名、淘汰或下架；執行前必須查核 Groq 當下可用的 model ID。
+- LLM 回答具有隨機性，評審分數不是客觀事實，也不能取代人類判斷。
+- 使用 live API 可能產生費用、速率限制或資料處理風險；請先閱讀供應商政策。
+- Synthetic example 只驗證流程呈現，不證明 AISuite 或 Groq 連線成功。
+"""
+
+DEBATE_SYNTHETIC_CODE = '''# SYNTHETIC EXAMPLE — 作者手寫，沒有呼叫任何 API
+synthetic_example = """SYNTHETIC EXAMPLE
+議題：小學生應該要有薪水
+正方：零用制度可作為責任教育的討論起點。
+反方：報酬可能改變學習與家庭分工的意義。
+評審：雙方各提出一項價值衝突；此段僅示範格式，不宣告勝負。
+"""
+print(synthetic_example)
+'''
+
 
 def cell_text(cell: dict) -> str:
     return "".join(cell.get("source", []))
@@ -204,6 +243,15 @@ def is_bts_notebook(notebook: dict) -> bool:
         'category_en = "RM,Jin,SUGA,JHope,Jimin,V,Jungkook"' in code
         and "ResNet50V2(include_top=False" in code
     )
+
+
+def is_debate_notebook(notebook: dict) -> bool:
+    code = "\n".join(
+        cell_text(cell)
+        for cell in notebook.get("cells", [])
+        if cell.get("cell_type") == "code"
+    )
+    return "def run_debate(topic, rounds=2):" in code and "model_judge" in code
 
 
 def rewrite_dnn(notebook: dict) -> dict:
@@ -565,6 +613,91 @@ def rewrite_bts(notebook: dict) -> dict:
     return rewritten
 
 
+def rewrite_debate(notebook: dict) -> dict:
+    """Return the safe, explicitly synthetic debate notebook."""
+
+    if not is_debate_notebook(notebook):
+        return copy.deepcopy(notebook)
+
+    rewritten = copy.deepcopy(notebook)
+    rewritten.setdefault("metadata", {}).pop("colab", None)
+    cells = rewritten.get("cells", [])
+    headings = {
+        line.strip().casefold()
+        for cell in cells
+        if cell.get("cell_type") == "markdown"
+        for line in cell_text(cell).splitlines()
+        if line.lstrip().startswith("#")
+    }
+
+    for cell in cells:
+        metadata = cell.setdefault("metadata", {})
+        for key in PRIVATE_METADATA_KEYS:
+            metadata.pop(key, None)
+        text = cell_text(cell)
+        if cell.get("cell_type") != "code":
+            if cell is cells[0] and "# problem" not in headings:
+                cell["source"] = source_lines(DEBATE_PROBLEM)
+            continue
+
+        cell["execution_count"] = None
+        cell["outputs"] = []
+        key_block = (
+            "# 直接寫入你的 Groq API Key（防呆專用）\n"
+            "# Set GROQ_API_KEY in the environment before running this cell.\n"
+            "groq_api_key = os.environ.get('GROQ_API_KEY')\n"
+            "if not groq_api_key:\n"
+            "    raise ValueError('GROQ_API_KEY is required')\n"
+        )
+        safe_key_block = (
+            "# 優先讀取環境變數；在 Colab 中可改用 Secrets。\n"
+            "groq_api_key = os.environ.get('GROQ_API_KEY')\n"
+            "if not groq_api_key:\n"
+            "    try:\n"
+            "        from google.colab import userdata\n"
+            "        groq_api_key = userdata.get('GROQ_API_KEY')\n"
+            "    except Exception:\n"
+            "        groq_api_key = None\n"
+            "if not groq_api_key:\n"
+            "    raise ValueError('Set GROQ_API_KEY in the environment or Colab Secrets')\n"
+            "os.environ['GROQ_API_KEY'] = groq_api_key\n"
+        )
+        text = text.replace(key_block, safe_key_block, 1)
+        text = text.replace(
+            "# 為了保證絕對不報錯，全部換成 Groq 目前最穩定、不會下架的模型",
+            "# Model ID 可能變動；執行前請查核 Groq 當下的模型目錄。",
+            1,
+        )
+        if "result = run_debate(" in text:
+            text = DEBATE_SYNTHETIC_CODE
+        text = text.replace(
+            "讓三個頂尖開源 AI 幫你吵架兼做裁判！",
+            "讓三個提示角色產生辯論與評審文字。",
+            1,
+        )
+        text = text.replace(
+            "demo.launch(share=True, debug=True)",
+            "demo.launch(share=False, debug=False)",
+            1,
+        )
+        cell["source"] = source_lines(text)
+
+    if "# method" not in headings:
+        cells.insert(1, markdown_cell(DEBATE_METHOD))
+    if "# results" not in headings:
+        synthetic_index = next(
+            index
+            for index, cell in enumerate(cells)
+            if "synthetic_example" in cell_text(cell)
+        )
+        cells.insert(synthetic_index, markdown_cell(DEBATE_RESULTS))
+    if "# limitations" not in headings:
+        cells.append(markdown_cell(DEBATE_LIMITATIONS))
+
+    rewritten["cells"] = cells
+    return rewritten
+
+
 def rewrite_file(path: Path, rewrite) -> None:
     notebook = json.loads(path.read_text(encoding="utf-8"))
     rewritten = rewrite(notebook)
@@ -578,4 +711,5 @@ if __name__ == "__main__":
     rewrite_file(MATH_PATH, rewrite_math_visualization)
     rewrite_file(DNN_PATH, rewrite_dnn)
     rewrite_file(BTS_PATH, rewrite_bts)
+    rewrite_file(DEBATE_PATH, rewrite_debate)
     rewrite_file(CNN_PATH, rewrite_cnn)
