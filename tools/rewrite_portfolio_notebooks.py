@@ -117,6 +117,10 @@ def is_dnn_notebook(notebook: dict) -> bool:
         for cell in notebook.get("cells", [])
         if cell.get("cell_type") == "code"
     )
+    return (
+        "from tensorflow.keras.datasets import mnist" in code
+        and "def resize_image_dnn_advanced" in code
+    )
 
 
 def is_cnn_notebook(notebook: dict) -> bool:
@@ -126,10 +130,6 @@ def is_cnn_notebook(notebook: dict) -> bool:
         if cell.get("cell_type") == "code"
     )
     return "model.add(Conv2D(32" in code and "def my_predict(n):" in code
-    return (
-        "from tensorflow.keras.datasets import mnist" in code
-        and "def resize_image_dnn_advanced" in code
-    )
 
 
 def rewrite_dnn(notebook: dict) -> dict:

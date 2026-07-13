@@ -280,6 +280,72 @@ def test_dnn_notebook_meets_portfolio_contract():
     rewrite_module = importlib.util.module_from_spec(rewrite_spec)
     rewrite_spec.loader.exec_module(rewrite_module)
 
+    original = json.loads(json.dumps(notebook))
+    setup, method, training, limitations, demo = [
+        original["cells"][index] for index in (1, 2, 3, 5, 6)
+    ]
+    setup_text = "".join(setup["source"]).replace(
+        "# 讓模型初始化與資料切分可重現\n"
+        "tf.keras.utils.set_random_seed(2026)\n\n",
+        "",
+        1,
+    )
+    setup["source"] = setup_text.splitlines(keepends=True)
+    method["source"] = ["### 💡 終極優化：DNN\n"]
+
+    training_text = "".join(training["source"])
+    training_text = training_text.replace(
+        "history = model.fit(\n"
+        "    x_train,\n"
+        "    y_train,\n"
+        "    batch_size=128,\n"
+        "    epochs=15,\n"
+        "    validation_split=0.1,\n"
+        ")\n",
+        "history = model.fit(x_train, y_train, batch_size=128, "
+        "epochs=15, validation_data=(x_test, y_test))\n",
+        1,
+    )
+    training_text = training_text.replace(
+        'print("模型訓練完成。")\n',
+        'print("模型訓練大功告成！")\n',
+        1,
+    )
+    training_text = training_text.replace(
+        "\n# 訓練與模型選擇完成後，只評估保留的 test split 一次\n"
+        "test_loss, test_accuracy = model.evaluate("
+        "x_test, y_test, verbose=0)\n",
+        "",
+        1,
+    )
+    training["source"] = training_text.splitlines(keepends=True)
+
+    limitations["source"] = ["### 📦 外部套件 Gradio 說明與展示\n"]
+    demo_text = "".join(demo["source"])
+    demo_text = demo_text.replace(
+        "把縮放後的字跡貼到",
+        "把縮放後的字跡完美地貼到",
+        1,
+    )
+    demo_text = demo_text.replace(
+        "請在畫板輸入一個數字；前處理會裁切非空白區域、"
+        "縮放並置中，結果仍會受筆畫與位置影響。",
+        "我透過『邊界框自動對齊 (Bounding Box)』技術消除誤差。"
+        "現在就算特別把字畫在角落，它也能幫我抓回中間給模型測！"
+        "(但還是請盡量稍微畫粗一點喔！)",
+        1,
+    )
+    demo_text = demo_text.replace(
+        "iface.launch(share=False, debug=False)",
+        "iface.launch(share=True, debug=True)",
+        1,
+    )
+    demo["source"] = demo_text.splitlines(keepends=True)
+    original["cells"] = [setup, method, training, limitations, demo]
+
+    assert rewrite_module.is_dnn_notebook(original) is True
+    assert rewrite_module.rewrite_dnn(original) == notebook
+    assert rewrite_module.is_dnn_notebook(notebook) is True
     assert rewrite_module.rewrite_dnn(notebook) == notebook
     unrelated = notebook_with("print('not the DNN notebook')\n")
     assert rewrite_module.rewrite_dnn(unrelated) == unrelated
