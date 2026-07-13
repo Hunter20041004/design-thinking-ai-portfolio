@@ -99,3 +99,99 @@ def test_validator_requires_a_supported_seed_for_model_training():
         assert "missing-deterministic-seed" not in MODULE.validate_notebook(
             seeded
         )
+
+
+def test_seed_detection_uses_executable_calls_not_comments_or_strings():
+    commented_seed = add_required_sections(
+        notebook_with(
+            "# tf.keras.utils.set_random_seed(2026)\n"
+            "model.fit(x_train, y_train)\n"
+        )
+    )
+    assert "missing-deterministic-seed" in MODULE.validate_notebook(
+        commented_seed
+    )
+
+    string_seed = add_required_sections(
+        notebook_with(
+            "seed_example = 'np.random.seed(2026)'\n"
+            "model.fit(x_train, y_train)\n"
+        )
+    )
+    assert "missing-deterministic-seed" in MODULE.validate_notebook(
+        string_seed
+    )
+
+    string_fit = add_required_sections(
+        notebook_with("example = 'model.fit(x_train, y_train)'\n")
+    )
+    assert "missing-deterministic-seed" not in MODULE.validate_notebook(
+        string_fit
+    )
+
+    for seed_call in (
+        "tf.keras.utils.set_random_seed(2026)",
+        "tf.random.set_seed(2026)",
+        "np.random.seed(2026)",
+    ):
+        seeded = add_required_sections(
+            notebook_with(f"{seed_call}\nmodel.fit(x_train, y_train)\n")
+        )
+        assert "missing-deterministic-seed" not in MODULE.validate_notebook(
+            seeded
+        )
+
+
+def test_required_headings_ignore_backtick_and_tilde_fenced_blocks():
+    for fence in ("```", "~~~"):
+        notebook = notebook_with("print('coursework evidence')\n")
+        notebook["cells"].insert(
+            0,
+            {
+                "cell_type": "markdown",
+                "metadata": {},
+                "source": [
+                    "# Problem\n",
+                    f"{fence}markdown\n",
+                    "# Method\n",
+                    "# Results\n",
+                    "# Limitations\n",
+                    f"{fence}\n",
+                ],
+            },
+        )
+
+        assert MODULE.validate_notebook(notebook) == [
+            "missing-method-section",
+            "missing-results-section",
+            "missing-limitations-section",
+        ]
+
+
+def test_required_headings_accept_optional_closing_hashes():
+    notebook = notebook_with("print('coursework evidence')\n")
+    notebook["cells"].insert(
+        0,
+        {
+            "cell_type": "markdown",
+            "metadata": {},
+            "source": [
+                "# Problem #\n",
+                "## Method ##\n",
+                "### Results ###\n",
+                "#### Limitations ####\n",
+            ],
+        },
+    )
+
+    assert MODULE.validate_notebook(notebook) == []
+
+
+def test_public_defaults_require_exact_keyword_argument_names():
+    notebook = add_required_sections(
+        notebook_with("demo.launch(not_share=True, nodebug=True)\n")
+    )
+
+    violations = MODULE.validate_notebook(notebook)
+    assert "public-share-enabled" not in violations
+    assert "debug-enabled" not in violations
