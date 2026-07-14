@@ -758,6 +758,17 @@ def test_readme_frames_coursework_evidence_and_preserves_rights():
     assert "license badge" not in readme.casefold()
 
 
+def test_readme_links_to_the_verified_ci_workflow():
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    badge = (
+        "[![CI](https://github.com/Hunter20041004/"
+        "design-thinking-ai-portfolio/actions/workflows/ci.yml/badge.svg)]"
+        "(https://github.com/Hunter20041004/"
+        "design-thinking-ai-portfolio/actions/workflows/ci.yml)"
+    )
+    assert readme.count(badge) == 1
+
+
 def test_all_notebooks_meet_portfolio_contract():
     notebook_paths = sorted((ROOT / "notebooks").glob("*.ipynb"))
 

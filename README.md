@@ -1,5 +1,7 @@
 # Design Thinking × AI Portfolio
 
+[![CI](https://github.com/Hunter20041004/design-thinking-ai-portfolio/actions/workflows/ci.yml/badge.svg)](https://github.com/Hunter20041004/design-thinking-ai-portfolio/actions/workflows/ci.yml)
+
 ## Executive Summary
 
 This repository is public learning evidence from National Chengchi University’s
