@@ -242,6 +242,48 @@ def test_public_defaults_apply_only_to_launch_call_arguments():
     assert "debug-enabled" not in violations
 
 
+def test_safe_launch_contract_uses_executable_literal_arguments():
+    hostile = add_required_sections(
+        notebook_with(
+            "demo.launch(share=bool(1), debug=bool(1))\n"
+            "decoy = 'demo.launch(share=False, debug=False)'\n"
+        )
+    )
+
+    assert not MODULE.launch_calls_use_literal_keyword(
+        hostile, "share", False
+    )
+    assert not MODULE.launch_calls_use_literal_keyword(
+        hostile, "debug", False
+    )
+
+
+def test_credential_contract_uses_executable_calls_not_string_decoys():
+    hostile = notebook_with(
+        "groq_api_key = input('Paste Groq API key')\n"
+        "decoy = \"os.environ.get('GROQ_API_KEY'); "
+        "userdata.get('GROQ_API_KEY')\"\n"
+    )
+
+    assert MODULE.has_executable_call(hostile, ("input",))
+    assert not MODULE.has_executable_call(
+        hostile, ("os", "environ", "get")
+    )
+    assert not MODULE.has_executable_call(hostile, ("userdata", "get"))
+
+
+def test_methodology_disclosures_must_be_markdown_not_code_decoys():
+    hostile = add_required_sections(
+        notebook_with(
+            "decoy = '沒有獨立 test split；影像著作權、授權與當事人同意尚未驗證'\n"
+        )
+    )
+
+    markdown = MODULE.markdown_text(hostile)
+    assert "沒有獨立 test split" not in markdown
+    assert "影像著作權、授權與當事人同意尚未驗證" not in markdown
+
+
 def test_dnn_notebook_meets_portfolio_contract():
     notebook = load_notebook("02-mnist-neural-network-gradio.ipynb")
 
@@ -476,7 +518,7 @@ def test_bts_transfer_learning_notebook_meets_portfolio_contract():
     assert code.count("tf.keras.utils.set_random_seed(2026)") == 1
     assert "validation_split=0.2" in MODULE.compact_text(code)
     assert "model.evaluate(" not in code
-    assert "demo.launch(share=false)" in MODULE.compact_text(code)
+    assert MODULE.launch_calls_use_literal_keyword(notebook, "share", False)
     preserved_code = (
         "ResNet50V2(include_top=False, pooling='avg', weights='imagenet')",
         "features = resnet.predict(data_preprocessed, verbose=1)",
@@ -491,6 +533,7 @@ def test_bts_transfer_learning_notebook_meets_portfolio_contract():
         "".join(cell.get("source", []))
         for cell in notebook.get("cells", [])
     )
+    markdown = MODULE.markdown_text(notebook)
     required_disclosures = (
         "沒有獨立 test split",
         "先切分原始照片，再只增強 training split",
@@ -499,7 +542,7 @@ def test_bts_transfer_learning_notebook_meets_portfolio_contract():
         "不宣稱 final test 表現",
     )
     for disclosure in required_disclosures:
-        assert disclosure in notebook_text
+        assert disclosure in markdown
     for claim in (
         "即使每人只有 ~10 張照片，也能有不錯的辨識效果",
         "所以訓練非常快",
@@ -535,11 +578,12 @@ def test_debate_arena_notebook_meets_portfolio_contract():
     assert {"problem", "method", "results", "limitations"} <= headings
 
     code = MODULE.code_text(notebook)
-    compact_code = MODULE.compact_text(code)
-    assert "demo.launch(share=false,debug=false)" in compact_code
-    assert "os.environ.get('groq_api_key')" in code.casefold()
+    assert MODULE.launch_calls_use_literal_keyword(notebook, "share", False)
+    assert MODULE.launch_calls_use_literal_keyword(notebook, "debug", False)
+    assert MODULE.has_executable_call(notebook, ("os", "environ", "get"))
     assert "from google.colab import userdata" in code
-    assert "userdata.get('GROQ_API_KEY')" in code
+    assert MODULE.has_executable_call(notebook, ("userdata", "get"))
+    assert not MODULE.has_executable_call(notebook, ("input",))
     assert "result = run_debate(" not in code
     preserved_code = (
         'model_pro = "groq:llama-3.3-70b-versatile"',
@@ -555,10 +599,12 @@ def test_debate_arena_notebook_meets_portfolio_contract():
         "".join(cell.get("source", []))
         for cell in notebook.get("cells", [])
     )
-    assert "SYNTHETIC EXAMPLE" in notebook_text
-    assert "沒有呼叫任何 API" in notebook_text
-    assert "模型可能被供應商更名、淘汰或下架" in notebook_text
-    assert "live Groq 輸出只會在使用者主動操作介面後產生" in notebook_text
+    markdown = MODULE.markdown_text(notebook)
+    assert "SYNTHETIC EXAMPLE" in markdown
+    assert "沒有呼叫任何 API" in markdown
+    assert "模型可能被供應商更名、淘汰或下架" in markdown
+    assert "live Groq 輸出只會在使用者主動操作介面後產生" in markdown
+    assert "synthetic_example =" in code
     for claim in ("不會下架", "絕對不報錯", "零設定防呆版"):
         assert claim not in notebook_text
 
@@ -590,11 +636,12 @@ def test_reflection_agent_notebook_meets_portfolio_contract():
     assert {"problem", "method", "results", "limitations"} <= headings
 
     code = MODULE.code_text(notebook)
-    compact_code = MODULE.compact_text(code)
-    assert "demo.launch(share=false,debug=false)" in compact_code
-    assert "os.environ.get('groq_api_key')" in code.casefold()
+    assert MODULE.launch_calls_use_literal_keyword(notebook, "share", False)
+    assert MODULE.launch_calls_use_literal_keyword(notebook, "debug", False)
+    assert MODULE.has_executable_call(notebook, ("os", "environ", "get"))
     assert "from google.colab import userdata" in code
-    assert "userdata.get('GROQ_API_KEY')" in code
+    assert MODULE.has_executable_call(notebook, ("userdata", "get"))
+    assert not MODULE.has_executable_call(notebook, ("input",))
     preserved_code = (
         "def reply(system=",
         "response = client.chat.completions.create(",
@@ -611,11 +658,13 @@ def test_reflection_agent_notebook_meets_portfolio_contract():
         "".join(cell.get("source", []))
         for cell in notebook.get("cells", [])
     )
-    assert "SYNTHETIC EXAMPLE" in notebook_text
-    assert "沒有呼叫任何 API" in notebook_text
-    assert "只驗證 orchestration 的資料流與呈現格式" in notebook_text
-    assert "live provider output 只會在使用者主動操作介面後產生" in notebook_text
-    assert "模型可能被供應商更名、淘汰或下架" in notebook_text
+    markdown = MODULE.markdown_text(notebook)
+    assert "SYNTHETIC EXAMPLE" in markdown
+    assert "沒有呼叫任何 API" in markdown
+    assert "只驗證 orchestration 的資料流與呈現格式" in markdown
+    assert "live provider output 只會在使用者主動操作介面後產生" in markdown
+    assert "模型可能被供應商更名、淘汰或下架" in markdown
+    assert "synthetic_reflection =" in code
     for claim in ("頂級", "史詩級", "一定要有一個吊人胃口"):
         assert claim not in notebook_text
 

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import ast
 import io
 import re
 import tokenize
@@ -17,6 +18,14 @@ def compact_text(text: str) -> str:
     return "".join(text.split()).casefold()
 
 
+def markdown_text(notebook: dict) -> str:
+    return "\n".join(
+        "".join(cell.get("source", []))
+        for cell in notebook.get("cells", [])
+        if cell.get("cell_type") == "markdown"
+    )
+
+
 def executable_tokens(source: str) -> tuple[str, ...]:
     tokens = []
     try:
@@ -27,6 +36,74 @@ def executable_tokens(source: str) -> tuple[str, ...]:
     except (IndentationError, tokenize.TokenError):
         pass
     return tuple(tokens)
+
+
+def executable_trees(notebook: dict) -> tuple[ast.AST, ...]:
+    trees = []
+    for cell in notebook.get("cells", []):
+        if cell.get("cell_type") != "code":
+            continue
+        source_lines = []
+        for line in "".join(cell.get("source", [])).splitlines(True):
+            stripped = line.lstrip()
+            if stripped.startswith(("!", "%")):
+                indentation = line[: len(line) - len(stripped)]
+                source_lines.append(f"{indentation}pass\n")
+            else:
+                source_lines.append(line)
+        try:
+            trees.append(ast.parse("".join(source_lines)))
+        except SyntaxError:
+            continue
+    return tuple(trees)
+
+
+def launch_calls_use_literal_keyword(
+    notebook: dict, argument_name: str, expected_value: bool
+) -> bool:
+    launch_calls = []
+    for tree in executable_trees(notebook):
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call):
+                continue
+            function = node.func
+            is_launch = (
+                isinstance(function, ast.Name) and function.id == "launch"
+            ) or (
+                isinstance(function, ast.Attribute)
+                and function.attr == "launch"
+            )
+            if is_launch:
+                launch_calls.append(node)
+
+    if not launch_calls:
+        return False
+    return all(
+        any(
+            keyword.arg == argument_name
+            and isinstance(keyword.value, ast.Constant)
+            and keyword.value.value is expected_value
+            for keyword in call.keywords
+        )
+        for call in launch_calls
+    )
+
+
+def dotted_name(node: ast.AST) -> tuple[str, ...]:
+    if isinstance(node, ast.Name):
+        return (node.id,)
+    if isinstance(node, ast.Attribute):
+        parent = dotted_name(node.value)
+        return (*parent, node.attr) if parent else ()
+    return ()
+
+
+def has_executable_call(notebook: dict, expected_name: tuple[str, ...]) -> bool:
+    return any(
+        isinstance(node, ast.Call) and dotted_name(node.func) == expected_name
+        for tree in executable_trees(notebook)
+        for node in ast.walk(tree)
+    )
 
 
 def contains_token_sequence(
