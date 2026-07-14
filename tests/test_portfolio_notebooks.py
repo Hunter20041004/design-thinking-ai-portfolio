@@ -688,6 +688,25 @@ def test_reflection_agent_notebook_meets_portfolio_contract():
     assert rewrite_module.rewrite_reflection(unrelated) == unrelated
 
 
+def test_readme_frames_coursework_evidence_and_preserves_rights():
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    for required in (
+        "## Executive Summary",
+        "## Coursework Portfolio",
+        "## Methodology",
+        "## Limitations",
+        "## Reproducibility",
+        "Synthetic example",
+    ):
+        assert required in readme
+
+    rights = (ROOT / "RIGHTS.md").read_text(encoding="utf-8")
+    assert "retain their original rights" in rights
+    assert "no blanket reuse license is granted" in rights.casefold()
+    assert not (ROOT / "LICENSE").exists()
+    assert "license badge" not in readme.casefold()
+
+
 def test_all_notebooks_meet_portfolio_contract():
     notebook_paths = sorted((ROOT / "notebooks").glob("*.ipynb"))
 

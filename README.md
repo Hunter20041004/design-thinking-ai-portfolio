@@ -1,58 +1,86 @@
 # Design Thinking × AI Portfolio
 
-國立政治大學「設計思考與人工智慧」與磨課師「深度學習的原理及實務上的應用」課程中，經過內容去重後保留的六個程式作品。這組 Notebook 從基礎視覺化與神經網路，逐步走到 CNN、transfer learning、多模型協作與帶有反思流程的 AI agent。
+## Executive Summary
 
-## Projects
+This repository is public learning evidence from National Chengchi University’s
+Design Thinking × AI coursework and a MOOCs deep-learning course. It shows how
+I moved from Python visualization to neural networks, transfer learning and
+LLM orchestration while making the evaluation method, public-safety defaults
+and limitations explicit.
 
-| # | Notebook | 核心能力 | Demo |
-|---|---|---|---|
-| 01 | [Function & Math Visualization](notebooks/01-function-math-visualization.ipynb) | Python 函式、數值計算、Matplotlib 視覺化 | [Open in Colab](https://colab.research.google.com/github/Hunter20041004/design-thinking-ai-portfolio/blob/main/notebooks/01-function-math-visualization.ipynb) |
-| 02 | [MNIST Neural Network](notebooks/02-mnist-neural-network-gradio.ipynb) | TensorFlow DNN、模型評估、Gradio 互動介面 | [Open in Colab](https://colab.research.google.com/github/Hunter20041004/design-thinking-ai-portfolio/blob/main/notebooks/02-mnist-neural-network-gradio.ipynb) |
-| 03 | [BTS Transfer Learning Classifier](notebooks/03-bts-transfer-learning-classifier.ipynb) | ResNet50V2、特徵萃取、影像分類 | [Open in Colab](https://colab.research.google.com/github/Hunter20041004/design-thinking-ai-portfolio/blob/main/notebooks/03-bts-transfer-learning-classifier.ipynb) |
-| 04 | [Multi-LLM Debate Arena](notebooks/04-multi-llm-debate-arena.ipynb) | 多代理角色設計、對話記憶、LLM 評審 | [Open in Colab](https://colab.research.google.com/github/Hunter20041004/design-thinking-ai-portfolio/blob/main/notebooks/04-multi-llm-debate-arena.ipynb) |
-| 05 | [Reflection AI Agent](notebooks/05-reflection-ai-agent.ipynb) | agent workflow、reflection、工具整合、Gradio | [Open in Colab](https://colab.research.google.com/github/Hunter20041004/design-thinking-ai-portfolio/blob/main/notebooks/05-reflection-ai-agent.ipynb) |
-| 06 | [CNN Handwritten Digit Classifier](notebooks/06-cnn-handwritten-digit-classifier.ipynb) | Conv2D、Batch Normalization、Pooling、Dropout | [Open in Colab](https://colab.research.google.com/github/Hunter20041004/design-thinking-ai-portfolio/blob/main/notebooks/06-cnn-handwritten-digit-classifier.ipynb) |
+這是課程作業的整理版，不是 production AI 產品。公開的目的，是讓讀者能檢查我的
+問題拆解、方法選擇與安全邊界，而不是把課堂結果包裝成已部署或已驗證的服務。
 
-## Learning Progression
+## Coursework Portfolio
 
-```text
-Python / visualization
-        ↓
-Neural network fundamentals
-        ↓
-CNN image classification
-        ↓
-Transfer learning for image classification
-        ↓
-Multi-LLM role orchestration
-        ↓
-Reflection-based AI agent workflow
-```
+| # | Notebook | Learning evidence | Open in Colab |
+| --- | --- | --- | --- |
+| 01 | [Function & Math Visualization](notebooks/01-function-math-visualization.ipynb) | Python functions, NumPy and Matplotlib | [Colab](https://colab.research.google.com/github/Hunter20041004/design-thinking-ai-portfolio/blob/main/notebooks/01-function-math-visualization.ipynb) |
+| 02 | [MNIST Neural Network](notebooks/02-mnist-neural-network-gradio.ipynb) | TensorFlow DNN with training-only validation and one final test evaluation | [Colab](https://colab.research.google.com/github/Hunter20041004/design-thinking-ai-portfolio/blob/main/notebooks/02-mnist-neural-network-gradio.ipynb) |
+| 03 | [BTS Transfer Learning Classifier](notebooks/03-bts-transfer-learning-classifier.ipynb) | ResNet50V2 feature extraction and an honest classroom-evaluation boundary | [Colab](https://colab.research.google.com/github/Hunter20041004/design-thinking-ai-portfolio/blob/main/notebooks/03-bts-transfer-learning-classifier.ipynb) |
+| 04 | [Multi-LLM Debate Arena](notebooks/04-multi-llm-debate-arena.ipynb) | Multi-role prompting, message history and a synthetic transcript format | [Colab](https://colab.research.google.com/github/Hunter20041004/design-thinking-ai-portfolio/blob/main/notebooks/04-multi-llm-debate-arena.ipynb) |
+| 05 | [Reflection AI Agent](notebooks/05-reflection-ai-agent.ipynb) | Writer → Reviewer → Writer orchestration with an offline example | [Colab](https://colab.research.google.com/github/Hunter20041004/design-thinking-ai-portfolio/blob/main/notebooks/05-reflection-ai-agent.ipynb) |
+| 06 | [CNN Handwritten Digit Classifier](notebooks/06-cnn-handwritten-digit-classifier.ipynb) | CNN architecture, responsibility-based cells and separated validation/test use | [Colab](https://colab.research.google.com/github/Hunter20041004/design-thinking-ai-portfolio/blob/main/notebooks/06-cnn-handwritten-digit-classifier.ipynb) |
 
-## How to Run
+The Dense MNIST exercise from the MOOCs course duplicated an existing learning
+objective and was not added again. The CNN exercise remains because its model
+architecture and learning objective are materially different.
 
-最簡單的方式是點表格中的 **Open in Colab**，依序執行每一格。部分 Notebook 需要 GPU、下載公開模型／資料，或由使用者自行設定第三方 API key。
+## Methodology
 
-API key 請使用 Colab Secrets 或環境變數，切勿直接寫入 Notebook：
+- DNN and CNN model selection use training-only validation; the held-out test
+  data is evaluated once after training.
+- Training notebooks set a deterministic seed. Public copies contain no saved
+  execution output, Colab identity metadata or live provider response.
+- Every notebook contains Problem, Method, Results and Limitations sections.
+- Gradio launches default to local-only operation. API credentials are read
+  from `GROQ_API_KEY` or Colab Secrets and are never embedded in a notebook.
+- Validators and deterministic rewrite functions protect these contracts from
+  regression without executing paid or key-dependent services in CI.
 
-```python
-import os
+## Results and evidence policy
 
-api_key = os.environ.get("GROQ_API_KEY")
-```
+The repository preserves only evidence the public files can support. It does
+not invent accuracy numbers or imply that a notebook was re-run during this
+portfolio cleanup. Notebook 03’s curves are classroom diagnostics, not an
+independent test estimate.
 
-## Portfolio Notes
+**Synthetic example policy:** Notebooks 04 and 05 include clearly labelled,
+author-written examples to demonstrate output shape. No API call produced
+those examples, and they are not presented as Groq or AISuite model output.
 
-- Notebook 是課程作業的重新整理版本；專案名稱與說明改成適合作品集閱讀的格式。
-- 磨課師的 Dense MNIST 作業與既有作品題目重複，因此不重複收錄；CNN 作業因模型架構與學習重點不同而保留。
-- 所有執行輸出與 Colab 個人 metadata 都已清除，避免公開個人 ID、暫時分享網址或執行紀錄。
-- Repository 不包含 API key、登入憑證、模型權重或課程平台資料。
-- BTS 影像分類器僅供機器學習練習；人物影像與相關商標權利屬原權利人。
+## Limitations
 
-## Repository Safety Check
+- Notebook 03 augments images before its classroom validation split and has no
+  independent test set; its results cannot establish generalization or identity.
+- The BTS image dataset’s provenance, participant consent and reuse rights have
+  not been verified. The dataset is not included in this repository.
+- Model IDs, availability, cost and provider behavior can change. LLM outputs
+  may be inconsistent, incorrect or inappropriate.
+- Structural tests verify public source and notebook JSON contracts; they do
+  not prove GPU compatibility, third-party uptime or live API success.
 
-`tools/sanitize_notebooks.py` 會在發布前移除 Notebook outputs、執行 metadata 與硬編碼的 credential assignment。`tools/notebook_dedup.py` 則比對正規化程式碼、資料集與神經網路架構，避免重複作品；兩者都有測試保護：
+## Reproducibility
+
+Open a notebook from the table and run it in order. Some notebooks require a
+GPU, public model downloads or a credential supplied by the user. Before using
+a live provider, review its current terms and data-handling policy.
+
+Repository checks are CPU-only and do not execute notebook cells:
 
 ```bash
-python -m pytest tests
+python3 -m venv .venv
+.venv/bin/python -m pip install pytest
+.venv/bin/python -m pytest tests -q
+.venv/bin/python tools/validate_portfolio_notebooks.py notebooks/*.ipynb
 ```
+
+`tools/sanitize_notebooks.py` removes outputs, execution metadata and hard-coded
+credential assignments. `tools/notebook_dedup.py` compares normalized code,
+datasets and model structure to prevent duplicate portfolio entries.
+
+## Rights
+
+This repository does not make a blanket open-source grant over course material,
+third-party assets, datasets, model artifacts or notebook contents. See
+[RIGHTS.md](RIGHTS.md) before reusing anything from this repository.
