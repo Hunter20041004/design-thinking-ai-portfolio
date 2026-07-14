@@ -1,6 +1,7 @@
 import importlib.util
 import json
 from pathlib import Path
+import re
 
 
 ROOT = Path(__file__).parents[1]
@@ -41,6 +42,56 @@ def load_notebook(name: str) -> dict:
     return json.loads(
         (ROOT / "notebooks" / name).read_text(encoding="utf-8")
     )
+
+
+def assert_ci_workflow_contract(workflow: str) -> None:
+    required = (
+        "name: CI",
+        "push:",
+        "pull_request:",
+        "workflow_dispatch:",
+        "permissions:\n  contents: read",
+        "group: design-thinking-ci-${{ github.workflow }}-${{ github.ref }}",
+        "cancel-in-progress: true",
+        "timeout-minutes: 10",
+        'python-version: "3.12"',
+        "persist-credentials: false",
+        "python3 -m pip check",
+        "python3 -m pip_audit",
+        "python3 -m pytest tests -q",
+        "python3 tools/validate_portfolio_notebooks.py notebooks/*.ipynb",
+    )
+    for item in required:
+        assert item in workflow
+
+    approved_actions = {
+        "actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5",
+        "actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065",
+    }
+    action_refs = set(re.findall(r"uses:\s*([^\s#]+)", workflow))
+    assert action_refs == approved_actions
+
+    forbidden_patterns = (
+        r"secrets\s*(?:\.|\[)",
+        r"\bGROQ_API_KEY\b",
+        r"share\s*=\s*True",
+        r"continue-on-error\s*:\s*true",
+        r"\|\|\s*true",
+        r"\bset\s+\+e\b",
+        r"if\s*:\s*always\(\)",
+        r"\bservices\s*:",
+        r"\b(?:cuda|gpu|tensorflow|torch)\b",
+        r"jupyter\s+(?:execute|run|nbconvert)",
+        r"nbconvert",
+    )
+    for pattern in forbidden_patterns:
+        assert re.search(pattern, workflow, re.IGNORECASE) is None, pattern
+
+
+def test_ci_is_cpu_only_least_privilege_and_structural():
+    workflow_path = ROOT / ".github" / "workflows" / "ci.yml"
+    workflow = workflow_path.read_text(encoding="utf-8")
+    assert_ci_workflow_contract(workflow)
 
 
 def test_validator_rejects_test_data_used_as_validation():
